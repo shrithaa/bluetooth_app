@@ -9,7 +9,6 @@ import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 public class BluetoothConnector {
 
@@ -17,19 +16,19 @@ public class BluetoothConnector {
     private BluetoothDevice device;
     private boolean secure;
     private BluetoothAdapter adapter;
-    private List<UUID> uuidCandidates;
+    private List<Integer> channels;
     private int candidate;
 
     public BluetoothConnector(BluetoothDevice device, boolean secure, BluetoothAdapter adapter,
-                              List<UUID> uuidCandidates) {
+                              List<Integer> channels) {
         this.device = device;
         this.secure = secure;
         this.adapter = adapter;
-        this.uuidCandidates = uuidCandidates;
+        this.channels = channels;
 
-        if (this.uuidCandidates == null || this.uuidCandidates.isEmpty()) {
-            this.uuidCandidates = new ArrayList<>();
-            this.uuidCandidates.add(UUID.fromString("0000110A-0000-1000-8000-00805F9B34FB"));
+        if (this.channels == null || this.channels.isEmpty()) {
+            this.channels = new ArrayList<>();
+            this.channels.add(1); // Default to channel 1 if no channels provided
         }
     }
 
@@ -68,18 +67,19 @@ public class BluetoothConnector {
     }
 
     private boolean selectSocket() throws IOException {
-        if (candidate >= uuidCandidates.size()) {
+        if (candidate >= channels.size()) {
             return false;
         }
 
         BluetoothSocket tmp;
-        UUID uuid = uuidCandidates.get(candidate++);
+        int channel = channels.get(candidate++);
 
-        Log.i("BT", "Attempting to connect to Protocol: " + uuid);
-        if (secure) {
-            tmp = device.createRfcommSocketToServiceRecord(uuid);
-        } else {
-            tmp = device.createInsecureRfcommSocketToServiceRecord(uuid);
+        Log.i("BT", "Attempting to connect to Channel: " + channel);
+        try {
+            Method m = device.getClass().getMethod("createRfcommSocket", int.class);
+            tmp = (BluetoothSocket) m.invoke(device, channel);
+        } catch (Exception e) {
+            throw new IOException(e);
         }
         bluetoothSocket = new NativeBluetoothSocket(tmp);
 
@@ -159,7 +159,7 @@ public class BluetoothConnector {
                 Class<?> clazz = tmp.getRemoteDevice().getClass();
                 Class<?>[] paramTypes = new Class<?>[]{int.class};
                 Method m = clazz.getMethod("createRfcommSocket", paramTypes);
-                Object[] params = new Object[]{1};
+                Object[] params = new Object[]{1}; // Default to channel 1
                 fallbackSocket = (BluetoothSocket) m.invoke(tmp.getRemoteDevice(), params);
             } catch (Exception e) {
                 throw new FallbackException(e);

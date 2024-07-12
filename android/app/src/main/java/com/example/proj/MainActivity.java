@@ -1,22 +1,24 @@
-package com.example.proj; // Ensure this matches your package name
+package com.example.proj;
 
 import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
 import android.content.pm.PackageManager;
-import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
+
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+
 import io.flutter.embedding.android.FlutterActivity;
 import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugins.GeneratedPluginRegistrant;
+
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.UUID;
@@ -44,7 +46,8 @@ public class MainActivity extends FlutterActivity {
                                         return;
                                     }
                                 }
-                                new ConnectBluetoothTask(result).execute(deviceAddress);
+                                boolean connected = connectBluetooth(deviceAddress);
+                                result.success(connected);
                             } else {
                                 result.notImplemented();
                             }
@@ -52,62 +55,29 @@ public class MainActivity extends FlutterActivity {
                 );
     }
 
-    private static class ConnectBluetoothTask extends AsyncTask<String, Void, Boolean> {
-        private final MethodChannel.Result result;
+    private boolean connectBluetooth(String deviceAddress) {
+        BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        BluetoothDevice device = bluetoothAdapter.getRemoteDevice(deviceAddress);
+        BluetoothSocket socket = null;
 
-        ConnectBluetoothTask(MethodChannel.Result result) {
-            this.result = result;
-        }
-
-        @Override
-        protected Boolean doInBackground(String... params) {
-            String deviceAddress = params[0];
-            BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-            BluetoothDevice device = bluetoothAdapter.getRemoteDevice(deviceAddress);
-            BluetoothSocket socket = null;
+        try {
+            // Use UUID for SPP (Serial Port Profile)
             UUID uuid = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
+            socket = device.createRfcommSocketToServiceRecord(uuid);
 
-            try {
-                socket = device.createRfcommSocketToServiceRecord(uuid);
-                socket.connect();
-                Log.d("Bluetooth", "Connected to device: " + device.getName());
-
-                // Extend the timeout
-                extendSocketTimeout(socket);
-
-                return true;
-            } catch (IOException e) {
-                Log.e("Bluetooth", "Failed to connect to device: " + device.getName(), e);
-                return false;
-            } finally {
-                if (socket != null) {
-                    try {
-                        socket.close();
-                    } catch (IOException e) {
-                        Log.e("Bluetooth", "Failed to close socket", e);
-                    }
+            socket.connect();
+            Log.d("Bluetooth", "Connected to device: " + device.getName());
+            return true;
+        } catch (IOException e) {
+            Log.e("Bluetooth", "Failed to connect to device: " + device.getName(), e);
+            return false;
+        } finally {
+            if (socket != null) {
+                try {
+                    socket.close();
+                } catch (IOException e) {
+                    Log.e("Bluetooth", "Failed to close socket", e);
                 }
-            }
-        }
-
-        @Override
-        protected void onPostExecute(Boolean connected) {
-            result.success(connected);
-        }
-
-        private void extendSocketTimeout(BluetoothSocket socket) {
-            try {
-                Method method = socket.getClass().getMethod("setSocketOption", int.class, int.class, byte[].class);
-                int option = 0x03; // SO_RCVTIMEO
-                int timeout = 10000; // 10 seconds
-                byte[] value = new byte[4];
-                value[0] = (byte) (timeout & 0xFF);
-                value[1] = (byte) ((timeout >> 8) & 0xFF);
-                value[2] = (byte) ((timeout >> 16) & 0xFF);
-                value[3] = (byte) ((timeout >> 24) & 0xFF);
-                method.invoke(socket, option, value.length, value);
-            } catch (Exception e) {
-                Log.e("Bluetooth", "Failed to set socket timeout", e);
             }
         }
     }
